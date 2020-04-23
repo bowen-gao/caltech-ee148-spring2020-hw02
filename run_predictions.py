@@ -1,7 +1,11 @@
 import os
 import numpy as np
 import json
-from PIL import Image
+from PIL import Image, ImageDraw
+from matplotlib import cm
+import seaborn as sb
+import matplotlib.pyplot as plt
+
 
 def compute_convolution(I, T, stride=None):
     '''
@@ -10,13 +14,22 @@ def compute_convolution(I, T, stride=None):
     convolution at each location. You can add optional parameters (e.g. stride, 
     window_size, padding) to create additional functionality. 
     '''
-    (n_rows,n_cols,n_channels) = np.shape(I)
+    (n_rows, n_cols, n_channels) = np.shape(I)
 
     '''
     BEGIN YOUR CODE
     '''
-    heatmap = np.random.random((n_rows, n_cols))
-
+    (t_rows, t_cols, t_channels) = np.shape(T)
+    padding_row_top = int(t_rows / 2)
+    padding_col_left = int(t_cols / 2)
+    heatmap = np.zeros((n_rows, n_cols))
+    padding_I = np.zeros((n_rows + t_rows - 1, n_cols + t_cols - 1, t_channels))
+    padding_I[padding_row_top:padding_row_top + n_rows, padding_col_left:padding_col_left + n_cols] = I
+    v2 = T.reshape(t_rows * t_cols * t_channels) / 127.5 - 1
+    for i in range(n_rows):
+        for j in range(n_cols):
+            v1 = padding_I[i:i + t_rows, j:j + t_cols].reshape(t_rows * t_cols * t_channels) / 127.5 - 1
+            heatmap[i][j] = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     '''
     END YOUR CODE
     '''
@@ -35,29 +48,25 @@ def predict_boxes(heatmap):
     '''
     BEGIN YOUR CODE
     '''
-    
+
     '''
     As an example, here's code that generates between 1 and 5 random boxes
     of fixed size and returns the results in the proper format.
     '''
-
-    box_height = 8
-    box_width = 6
-
-    num_boxes = np.random.randint(1,5)
-
-    for i in range(num_boxes):
-        (n_rows,n_cols,n_channels) = np.shape(I)
-
-        tl_row = np.random.randint(n_rows - box_height)
-        tl_col = np.random.randint(n_cols - box_width)
-        br_row = tl_row + box_height
-        br_col = tl_col + box_width
-
-        score = np.random.random()
-
-        output.append([tl_row,tl_col,br_row,br_col, score])
-
+    box_height = 10
+    box_width = 10
+    (n_rows, n_cols) = np.shape(heatmap)
+    top_start = int(box_height / 2)
+    left_start = int(box_width / 2)
+    for i in range(top_start, n_rows - (box_height - top_start) + 1):
+        for j in range(left_start, n_cols - (box_width - left_start) + 1):
+            tl_row = i - top_start
+            tl_col = j - left_start
+            br_row = tl_row + box_height
+            br_col = tl_col + box_width
+            score = (heatmap[i, j] + 1) / 2
+            if score > 0.9:
+                output.append([tl_row, tl_col, br_row, br_col, score])
     '''
     END YOUR CODE
     '''
@@ -84,15 +93,31 @@ def detect_red_light_mf(I):
     '''
     BEGIN YOUR CODE
     '''
-    template_height = 8
-    template_width = 6
 
     # You may use multiple stages and combine the results
-    T = np.random.random((template_height, template_width))
-
-    heatmap = compute_convolution(I, T)
+    with open("data/hw02_annotations/annotations.json") as f:
+        data = json.load(f)
+    loc = data["RL-001.jpg"][1]
+    loc = [int(i) for i in loc]
+    tmp = Image.open("data/RedLights2011_Medium/RL-001.jpg")
+    tmp = np.asarray(tmp)
+    T1 = tmp[loc[0]:loc[2], loc[1]:loc[3]]
+    # Image.fromarray(T1).save("aaa.jpg")
+    heatmap1 = compute_convolution(I, T1)
+    loc = data["RL-036.jpg"][1]
+    loc = [int(i) for i in loc]
+    tmp = Image.open("data/RedLights2011_Medium/RL-036.jpg")
+    tmp = np.asarray(tmp)
+    T2 = tmp[loc[0]:loc[2], loc[1]:loc[3]]
+    Image.fromarray(T2).save("bbb.jpg")
+    heatmap2 = compute_convolution(I, T2)
+    heatmap = np.maximum(heatmap1, heatmap2)
+    '''
+    heat_map = sb.heatmap(heatmap)
+    plt.savefig("hm.jpg")
+    '''
     output = predict_boxes(heatmap)
-
+    print(len(output))
     '''
     END YOUR CODE
     '''
@@ -103,30 +128,31 @@ def detect_red_light_mf(I):
 
     return output
 
+
 # Note that you are not allowed to use test data for training.
 # set the path to the downloaded data:
-data_path = '../data/RedLights2011_Medium'
+data_path = 'data/RedLights2011_Medium'
 
 # load splits: 
-split_path = '../data/hw02_splits'
-file_names_train = np.load(os.path.join(split_path,'file_names_train.npy'))
-file_names_test = np.load(os.path.join(split_Path,'file_names_test.npy'))
+split_path = 'data/hw02_splits'
+file_names_train = np.load(os.path.join(split_path, 'file_names_train.npy'))
+file_names_test = np.load(os.path.join(split_path, 'file_names_test.npy'))
 
 # set a path for saving predictions:
-preds_path = '../data/hw02_preds'
-os.makedirs(preds_path, exist_ok=True) # create directory if needed
+preds_path = 'data/hw02_preds'
+os.makedirs(preds_path, exist_ok=True)  # create directory if needed
 
 # Set this parameter to True when you're done with algorithm development:
-done_tweaking = False
+done_tweaking = True
 
 '''
 Make predictions on the training set.
 '''
 preds_train = {}
 for i in range(len(file_names_train)):
-
+    print(i)
     # read image using PIL:
-    I = Image.open(os.path.join(data_path,file_names_train[i]))
+    I = Image.open(os.path.join(data_path, file_names_train[i]))
 
     # convert to numpy array:
     I = np.asarray(I)
@@ -134,8 +160,8 @@ for i in range(len(file_names_train)):
     preds_train[file_names_train[i]] = detect_red_light_mf(I)
 
 # save preds (overwrites any previous predictions!)
-with open(os.path.join(preds_path,'preds_train.json'),'w') as f:
-    json.dump(preds_train,f)
+with open(os.path.join(preds_path, 'preds_train.json'), 'w') as f:
+    json.dump(preds_train, f)
 
 if done_tweaking:
     '''
@@ -143,9 +169,8 @@ if done_tweaking:
     '''
     preds_test = {}
     for i in range(len(file_names_test)):
-
         # read image using PIL:
-        I = Image.open(os.path.join(data_path,file_names_test[i]))
+        I = Image.open(os.path.join(data_path, file_names_test[i]))
 
         # convert to numpy array:
         I = np.asarray(I)
@@ -153,5 +178,5 @@ if done_tweaking:
         preds_test[file_names_test[i]] = detect_red_light_mf(I)
 
     # save preds (overwrites any previous predictions!)
-    with open(os.path.join(preds_path,'preds_test.json'),'w') as f:
-        json.dump(preds_test,f)
+    with open(os.path.join(preds_path, 'preds_test.json'), 'w') as f:
+        json.dump(preds_test, f)
