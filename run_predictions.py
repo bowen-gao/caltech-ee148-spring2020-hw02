@@ -26,9 +26,11 @@ def compute_convolution(I, T, stride=None):
     padding_I = np.zeros((n_rows + t_rows - 1, n_cols + t_cols - 1, t_channels))
     padding_I[padding_row_top:padding_row_top + n_rows, padding_col_left:padding_col_left + n_cols] = I
     v2 = T.reshape(t_rows * t_cols * t_channels) / 127.5 - 1
+    # loop over the map
     for i in range(n_rows):
         for j in range(n_cols):
             v1 = padding_I[i:i + t_rows, j:j + t_cols].reshape(t_rows * t_cols * t_channels) / 127.5 - 1
+            # arc cosine between two vectors
             heatmap[i][j] = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
     '''
     END YOUR CODE
@@ -53,19 +55,24 @@ def predict_boxes(heatmap):
     As an example, here's code that generates between 1 and 5 random boxes
     of fixed size and returns the results in the proper format.
     '''
+    # fixed size bounding box
     box_height = 10
     box_width = 10
     (n_rows, n_cols) = np.shape(heatmap)
     top_start = int(box_height / 2)
     left_start = int(box_width / 2)
+    # loop over heatmap
     for i in range(top_start, n_rows - (box_height - top_start) + 1):
         for j in range(left_start, n_cols - (box_width - left_start) + 1):
+            # let the location be the center of bounding box
             tl_row = i - top_start
             tl_col = j - left_start
             br_row = tl_row + box_height
             br_col = tl_col + box_width
             score = (heatmap[i, j] + 1) / 2
-            if score > 0.9:
+            # if score larger than a threshold
+            if score > 0.85:
+                # create a bounding box
                 output.append([tl_row, tl_col, br_row, br_col, score])
     '''
     END YOUR CODE
@@ -95,6 +102,7 @@ def detect_red_light_mf(I):
     '''
 
     # You may use multiple stages and combine the results
+    # template 1
     with open("data/hw02_annotations/annotations.json") as f:
         data = json.load(f)
     loc = data["RL-001.jpg"][1]
@@ -104,6 +112,7 @@ def detect_red_light_mf(I):
     T1 = tmp[loc[0]:loc[2], loc[1]:loc[3]]
     # Image.fromarray(T1).save("aaa.jpg")
     heatmap1 = compute_convolution(I, T1)
+    # template 2
     loc = data["RL-036.jpg"][1]
     loc = [int(i) for i in loc]
     tmp = Image.open("data/RedLights2011_Medium/RL-036.jpg")
@@ -111,6 +120,7 @@ def detect_red_light_mf(I):
     T2 = tmp[loc[0]:loc[2], loc[1]:loc[3]]
     Image.fromarray(T2).save("bbb.jpg")
     heatmap2 = compute_convolution(I, T2)
+    # final heatmap
     heatmap = np.maximum(heatmap1, heatmap2)
     '''
     heat_map = sb.heatmap(heatmap)
